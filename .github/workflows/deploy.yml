@@ -1,10 +1,16 @@
 name: Deploy to VPS
 
 on:
-  push:
-    branches:
-      - develop
-      - main
+ workflow_call:
+   secrets:
+     SSH_PRIVATE_KEY:
+       required: true
+     SSH_KNOWN_HOSTS:
+       required: true
+     VPS_USER:
+       required: true
+     VPS_HOST:
+       required: true
 
 jobs:
   deploy:
