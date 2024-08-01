@@ -1,0 +1,76 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Identify deleted files
+        id: deleted_files
+        run: |
+          echo "::set-output name=files::$(git diff --name-status ${{ github.event.before }} ${{ github.sha }} | grep '^D' | cut -f2)"
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Set deployment path
+        id: deploy_path
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "::set-output name=path::/home/recipescheduler_host/www/recipescheduler-prod"
+          else
+            echo "::set-output name=path::/home/recipescheduler_host/www/recipescheduler-test"
+          fi
+
+      - name: Delete removed files on server
+        run: |
+          for file in ${{ steps.deleted_files.outputs.files }}; do
+            ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "rm -f ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/$file"
+          done
+
+      - name: Sync files to the server
+        run: |
+          rsync -avz ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/
+
+      - name: Set permissions
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+            chown -R www-data:www-data ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+            chmod -R 755 ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+            find ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/} -type f -exec chmod 644 {} \;
+          "
+
+      - name: Post-deployment tasks (Backend)
+        if: endsWith(github.repository, 'backend')
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+            cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+            source venv/bin/activate
+            pip install -r requirements.txt
+            alembic upgrade head
+            systemctl restart recipescheduler
+          "
+
+      - name: Post-deployment tasks (Frontend)
+        if: endsWith(github.repository, 'frontend')
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+            cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+            npm install
+            npm run build
+            pm2 restart recipescheduler-frontend
+          "
