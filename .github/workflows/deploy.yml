@@ -79,5 +79,5 @@ jobs:
             cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
             npm install
             npm run build
-            pm2 restart recipescheduler-frontend
+            sudo systemctl restart apache2
           "
