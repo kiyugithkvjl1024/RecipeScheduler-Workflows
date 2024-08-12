@@ -76,7 +76,7 @@ jobs:
           "
 
       - name: Post-deployment tasks (Backend)
-        if: endsWith(github.repository, 'backend')
+        if: endsWith(github.repository, 'BackEnd')
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
@@ -87,7 +87,7 @@ jobs:
           "
 
       - name: Post-deployment tasks (Frontend)
-        if: endsWith(github.repository, 'frontend')
+        if: endsWith(github.repository, 'FrontEnd')
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
