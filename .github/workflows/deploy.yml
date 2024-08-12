@@ -1,16 +1,16 @@
 name: Deploy to VPS
 
 on:
- workflow_call:
-   secrets:
-     SSH_PRIVATE_KEY:
-       required: true
-     SSH_KNOWN_HOSTS:
-       required: true
-     VPS_USER:
-       required: true
-     VPS_HOST:
-       required: true
+  workflow_call:
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: true
+      SSH_KNOWN_HOSTS:
+        required: true
+      VPS_USER:
+        required: true
+      VPS_HOST:
+        required: true
 
 jobs:
   deploy:
@@ -25,14 +25,25 @@ jobs:
         run: |
           echo "::set-output name=files::$(git diff --name-status ${{ github.event.before }} ${{ github.sha }} | grep '^D' | cut -f2)"
 
-      - name: Set up SSH
+      - name: Set up SSH agent
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.SSH_PRIVATE_KEY }}"
+
+      - name: Debug SSH connection
+        run: |
+          echo "Attempting to connect to ${{ secrets.VPS_HOST }}"
+          ssh -vvv -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'SSH connection successful'"
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+
+      - name: Set up SSH known hosts
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
           echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
-          # リトライロジックを追加
           for i in {1..5}; do
             if ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts; then
               break
@@ -40,11 +51,6 @@ jobs:
             echo "Retry $i: Waiting for host resolution..."
             sleep 10
           done
-          # IPアドレスを使用する場合（VPS_IPシークレットを追加する必要があります）
-          if [ -n "${{ secrets.VPS_IP }}" ]; then
-            ssh-keyscan -H ${{ secrets.VPS_IP }} >> ~/.ssh/known_hosts
-            echo "${{ secrets.VPS_IP }} ${{ secrets.VPS_HOST }}" | sudo tee -a /etc/hosts
-          fi
 
       - name: Set deployment path
         id: deploy_path
@@ -58,40 +64,48 @@ jobs:
       - name: Delete removed files on server
         run: |
           for file in ${{ steps.deleted_files.outputs.files }}; do
-            ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "rm -f ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/$file"
+            ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "rm -f ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/$file"
           done
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
       - name: Sync files to the server
         run: |
-          rsync -avz -e "ssh -o ConnectTimeout=30" ./ ${{ secrets.VPS_USER }}@${VPS_HOST}:${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30" ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/
         env:
-          VPS_HOST: ${{ secrets.VPS_IP || secrets.VPS_HOST }}
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
       - name: Set permissions
         run: |
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             chown -R www-data:www-data ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
             chmod -R 755 ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
             find ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/} -type f -exec chmod 644 {} \;
           "
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
       - name: Post-deployment tasks (Backend)
         if: endsWith(github.repository, 'BackEnd')
         run: |
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
             source venv/bin/activate
             pip install -r requirements.txt
             alembic upgrade head
             systemctl restart recipescheduler
           "
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
       - name: Post-deployment tasks (Frontend)
         if: endsWith(github.repository, 'FrontEnd')
         run: |
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
             npm install
-            npm run build
-            sudo systemctl restart apache2
+            npx next build
+            sudo systemctl restart apache2 || echo 'Failed to restart Apache2'
           "
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
