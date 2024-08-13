@@ -89,12 +89,13 @@ jobs:
         if: endsWith(github.repository, 'BackEnd')
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            cd ${{ steps.deploy_path.outputs.path }}/backend
-            echo 'Current directory: '$(pwd)
-            echo 'Directory contents: '$(ls -la)
+            cd /home/recipescheduler_host/www/recipescheduler-test/backend
+            echo 'Current directory: '\$(pwd)
+            echo 'Directory contents:'
+            ls -la
             source venv/bin/activate
-            echo 'Python version: '$(python --version)
-            echo 'Pip version: '$(pip --version)
+            echo 'Python version: '\$(python --version 2>&1)
+            echo 'Pip version: '\$(pip --version 2>&1)
             pip install -r requirements.txt
             echo 'DATABASE_URL=${{ secrets.DATABASE_URL }}' > .env
             echo 'TEST_DATABASE_URL=${{ secrets.TEST_DATABASE_URL }}' >> .env
@@ -103,7 +104,7 @@ jobs:
           "
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-
+          
       - name: Post-deployment tasks (Frontend)
         if: endsWith(github.repository, 'FrontEnd')
         run: |
