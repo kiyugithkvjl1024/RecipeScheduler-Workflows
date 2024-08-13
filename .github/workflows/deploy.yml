@@ -89,11 +89,17 @@ jobs:
         if: endsWith(github.repository, 'BackEnd')
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+            cd ${{ steps.deploy_path.outputs.path }}/backend
+            echo 'Current directory: '$(pwd)
+            echo 'Directory contents: '$(ls -la)
             source venv/bin/activate
+            echo 'Python version: '$(python --version)
+            echo 'Pip version: '$(pip --version)
             pip install -r requirements.txt
+            echo 'DATABASE_URL=${{ secrets.DATABASE_URL }}' > .env
+            echo 'TEST_DATABASE_URL=${{ secrets.TEST_DATABASE_URL }}' >> .env
             alembic upgrade head
-            systemctl restart recipescheduler
+            sudo systemctl restart recipescheduler.service
           "
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
@@ -102,9 +108,11 @@ jobs:
         if: endsWith(github.repository, 'FrontEnd')
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            cd ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+            cd ${{ steps.deploy_path.outputs.path }}/frontend
+            echo 'Current directory: '$(pwd)
+            echo 'Directory contents: '$(ls -la)
             npm install
-            npx next build
+            npm run build
             sudo systemctl restart apache2 || echo 'Failed to restart Apache2'
           "
         env:
