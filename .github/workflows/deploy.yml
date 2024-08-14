@@ -92,22 +92,20 @@ jobs:
       - name: Post-deployment tasks (Backend)
         if: endsWith(github.repository, 'BackEnd')
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            cd ${{ steps.deploy_path.outputs.path }}/backend
-            echo 'Current directory: '\$(pwd)
-            echo 'Directory contents:'
-            ls -la
-            source venv/bin/activate
-            echo 'Python version: '\$(python --version 2>&1)
-            echo 'Pip version: '\$(pip --version 2>&1)
-            pip install -r requirements.txt
-            echo 'DATABASE_URL=${{ secrets.DATABASE_URL }}' > .env
-            echo 'TEST_DATABASE_URL=${{ secrets.TEST_DATABASE_URL }}' >> .env
-            alembic upgrade head
-            systemctl restart recipescheduler.service
-          "
+         ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+           cd ${{ steps.deploy_path.outputs.path }}/backend
+           echo 'Current directory: '\$(pwd)
+           echo 'Directory contents:'
+           ls -la
+           source venv/bin/activate
+           echo 'Python version: '\$(python --version 2>&1)
+           echo 'Pip version: '\$(pip --version 2>&1)
+           pip install -r requirements.txt
+           alembic upgrade head
+           sudo systemctl restart recipescheduler.service || echo 'Failed to restart service'
+         "
         env:
-          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+         SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
       - name: Post-deployment tasks (Frontend)
         if: endsWith(github.repository, 'FrontEnd')
