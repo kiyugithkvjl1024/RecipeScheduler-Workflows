@@ -67,35 +67,51 @@ jobs:
             echo "::set-output name=env::test"
           fi
 
-      - name: Delete removed files on server
-        run: |
-          for file in ${{ steps.deleted_files.outputs.files }}; do
-            ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "rm -f ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/$file"
-          done
-        env:
-          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-
       - name: Prepare deployment directory
         run: |
+          if [[ "${{ github.repository }}" == *"BackEnd" ]]; then
+            TARGET_DIR="backend"
+          elif [[ "${{ github.repository }}" == *"FrontEnd" ]]; then
+            TARGET_DIR="frontend"
+          else
+            echo "Unknown repository type"
+            exit 1
+          fi
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            mkdir -p ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
-            chmod 755 ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+            mkdir -p ${{ steps.deploy_info.outputs.path }}/$TARGET_DIR
+            chmod 755 ${{ steps.deploy_info.outputs.path }}/$TARGET_DIR
           "
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-          
+
       - name: Sync files to the server
         run: |
-          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30" ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/
+          if [[ "${{ github.repository }}" == *"BackEnd" ]]; then
+            TARGET_DIR="backend"
+          elif [[ "${{ github.repository }}" == *"FrontEnd" ]]; then
+            TARGET_DIR="frontend"
+          else
+            echo "Unknown repository type"
+            exit 1
+          fi
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30" ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ steps.deploy_info.outputs.path }}/$TARGET_DIR/
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
       - name: Set permissions
         run: |
+          if [[ "${{ github.repository }}" == *"BackEnd" ]]; then
+            TARGET_DIR="backend"
+          elif [[ "${{ github.repository }}" == *"FrontEnd" ]]; then
+            TARGET_DIR="frontend"
+          else
+            echo "Unknown repository type"
+            exit 1
+          fi
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            chown -R www-data:www-data ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
-            chmod -R 755 ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
-            find ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/} -type f -exec chmod 644 {} \;
+            sudo chown -R www-data:www-data ${{ steps.deploy_info.outputs.path }}/$TARGET_DIR
+            sudo chmod -R 755 ${{ steps.deploy_info.outputs.path }}/$TARGET_DIR
+            sudo find ${{ steps.deploy_info.outputs.path }}/$TARGET_DIR -type f -exec chmod 644 {} \;
           "
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
