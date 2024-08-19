@@ -98,39 +98,15 @@ jobs:
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
-      - name: Set permissions
-        run: |
-          if [[ "${{ github.repository }}" == *"BackEnd" ]]; then
-            TARGET_DIR="backend"
-          elif [[ "${{ github.repository }}" == *"FrontEnd" ]]; then
-            TARGET_DIR="frontend"
-          else
-            echo "Unknown repository type"
-            exit 1
-          fi
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            sudo chown -R www-data:www-data ${{ steps.deploy_info.outputs.path }}/$TARGET_DIR
-            sudo chmod -R 755 ${{ steps.deploy_info.outputs.path }}/$TARGET_DIR
-            sudo find ${{ steps.deploy_info.outputs.path }}/$TARGET_DIR -type f -exec chmod 644 {} \;
-          "
-        env:
-          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
-
       - name: Post-deployment tasks (Backend)
         if: endsWith(github.repository, 'BackEnd')
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             cd ${{ steps.deploy_info.outputs.path }}/backend
-            echo 'Current directory: '\$(pwd)
-            echo 'Directory contents:'
-            ls -la
             source venv/bin/activate
-            echo 'Python version: '\$(python --version 2>&1)
-            echo 'Pip version: '\$(pip --version 2>&1)
             pip install -r requirements.txt
             alembic upgrade head
-            sudo systemctl restart recipescheduler@${{ steps.deploy_info.outputs.env }}.service || echo 'Failed to restart service'
-            echo 'Service status:'
+            sudo systemctl restart recipescheduler@${{ steps.deploy_info.outputs.env }}.service
             sudo systemctl status recipescheduler@${{ steps.deploy_info.outputs.env }}.service
           "
         env:
@@ -141,12 +117,8 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
             cd ${{ steps.deploy_info.outputs.path }}/frontend
-            echo 'Current directory: '\$(pwd)
-            echo 'Directory contents:'
-            ls -la
             npm install
             npm run build
-            sudo systemctl restart apache2 || echo 'Failed to restart Apache2'
           "
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
