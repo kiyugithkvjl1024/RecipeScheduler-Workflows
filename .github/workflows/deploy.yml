@@ -56,13 +56,15 @@ jobs:
             sleep 10
           done
 
-      - name: Set deployment path
-        id: deploy_path
+      - name: Set deployment path and environment
+        id: deploy_info
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "::set-output name=path::/home/recipescheduler_host/www/recipescheduler-prod"
+            echo "::set-output name=env::prod"
           else
             echo "::set-output name=path::/home/recipescheduler_host/www/recipescheduler-test"
+            echo "::set-output name=env::test"
           fi
 
       - name: Delete removed files on server
@@ -92,32 +94,34 @@ jobs:
       - name: Post-deployment tasks (Backend)
         if: endsWith(github.repository, 'BackEnd')
         run: |
-         ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-           cd ${{ steps.deploy_path.outputs.path }}/backend
-           echo 'Current directory: '\$(pwd)
-           echo 'Directory contents:'
-           ls -la
-           source venv/bin/activate
-           echo 'Python version: '\$(python --version 2>&1)
-           echo 'Pip version: '\$(pip --version 2>&1)
-           pip install -r requirements.txt
-           alembic upgrade head
-           sudo systemctl restart recipescheduler.service || echo 'Failed to restart service'
-         "
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+            cd ${{ steps.deploy_info.outputs.path }}/backend
+            echo 'Current directory: '\$(pwd)
+            echo 'Directory contents:'
+            ls -la
+            source venv/bin/activate
+            echo 'Python version: '\$(python --version 2>&1)
+            echo 'Pip version: '\$(pip --version 2>&1)
+            pip install -r requirements.txt
+            alembic upgrade head
+            sudo systemctl restart recipescheduler@${{ steps.deploy_info.outputs.env }}.service || echo 'Failed to restart service'
+            echo 'Service status:'
+            sudo systemctl status recipescheduler@${{ steps.deploy_info.outputs.env }}.service
+          "
         env:
-         SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
       - name: Post-deployment tasks (Frontend)
         if: endsWith(github.repository, 'FrontEnd')
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
-            cd ${{ steps.deploy_path.outputs.path }}/frontend
+            cd ${{ steps.deploy_info.outputs.path }}/frontend
             echo 'Current directory: '\$(pwd)
             echo 'Directory contents:'
             ls -la
             npm install
             npm run build
-            systemctl restart apache2 || echo 'Failed to restart Apache2'
+            sudo systemctl restart apache2 || echo 'Failed to restart Apache2'
           "
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
