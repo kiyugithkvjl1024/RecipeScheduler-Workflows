@@ -75,6 +75,15 @@ jobs:
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
+      - name: Prepare deployment directory
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "
+            mkdir -p ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+            chmod 755 ${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}
+          "
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          
       - name: Sync files to the server
         run: |
           rsync -avz -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30" ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ steps.deploy_path.outputs.path }}/${GITHUB_REPOSITORY#*/}/
