@@ -94,7 +94,7 @@ jobs:
             echo "Unknown repository type"
             exit 1
           fi
-          rsync -avz -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30" ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ steps.deploy_info.outputs.path }}/$TARGET_DIR/
+          rsync -avz --delete --exclude-from='.rsync-exclude' -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30" ./ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ steps.deploy_info.outputs.path }}/$TARGET_DIR/
         env:
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
 
